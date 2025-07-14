@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-
+import numpy as np
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 
 xls = pd.ExcelFile('Когортний аналіз.xlsx')
 df = xls.parse('Revenue cohort')
@@ -19,15 +20,29 @@ for _, row in df.iterrows():
     users = row['Users']
 
     if pd.notna(users) and users > 0:
-        revenue = row.iloc[2:]
-        arpu_by_week = revenue.cumsum() / users
-        plt.plot(arpu_by_week.index, arpu_by_week.values, label=f'cohort {int(cohort)}')
+        revenue = row.iloc[2:].dropna().values
+        arpu = np.cumsum(revenue) / users
+        x = np.arange(len(arpu))
 
+        if len(arpu) >= 4:
+            try:
+                model = ExponentialSmoothing(arpu, trend="add", seasonal=None)
+                fit = model.fit()
+                forecast_horizon = 52 - len(arpu)
+                forecast = fit.forecast(forecast_horizon)
+                forecast = np.clip(forecast, arpu[-1], None)
+
+                arpu_full = np.concatenate([arpu, forecast])
+                x_full = np.arange(len(arpu_full))
+                plt.plot(x_full, arpu_full, label=f'Cohort {int(cohort)}')
+
+            except Exception as e:
+                print(f'error {cohort}: {e}')
+                continue
 
 plt.xlabel('Week')
-plt.ylabel('APPU')
-
-plt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0), ncol=1, fontsize='small')
+plt.ylabel('ARPU')
+plt.legend(loc='upper left', bbox_to_anchor=(1.0, 1.0), fontsize='small')
 
 plt.grid(True)
 plt.tight_layout()
